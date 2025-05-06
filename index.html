@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Predicción con TensorFlow.js</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f2f2f2;
+    }
+    button {
+      padding: 8px 12px;
+      margin: 10px 0;
+    }
+    canvas {
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Predicción con TensorFlow.js</h2>
+
+  <button onclick="trainModel()" style="background:green;color:white;">Entrenar Modelo</button>
+
+  <h3>Gráfica de Pérdida durante el Entrenamiento</h3>
+  <canvas id="lossChart"></canvas>
+  <p id="lossInfo"></p>
+
+  <h3>Predicción</h3>
+  <label>Valores de X (separados por comas):</label>
+  <input type="text" id="inputX" placeholder="10, 20, 25">
+  <button id="predictBtn" onclick="makePrediction()" disabled>Predecir</button>
+
+  <p id="status">Estado: Esperando entrenamiento...</p>
+  <div id="resultados"></div>
+
+  <script>
+    let model = null;
+    let trained = false;
+    let lossValues = [];
+
+    async function trainModel() {
+      model = tf.sequential();
+      model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+      model.compile({
+        loss: 'meanSquaredError',
+        optimizer: 'sgd'
+      });
+
+      const xs = tf.tensor1d([1, 2, 3, 4, 5]);
+      const ys = tf.tensor1d([3, 6, 9, 12, 15]); // y = 3x
+
+      lossValues = [];
+
+      await model.fit(xs, ys, {
+        epochs: 100,
+        callbacks: {
+          onEpochEnd: (epoch, logs) => {
+            lossValues.push({ epoch, loss: logs.loss });
+          }
+        }
+      });
+
+      trained = true;
+      document.getElementById('status').innerText = "Estado: Modelo entrenado correctamente";
+      document.getElementById('predictBtn').disabled = false;
+      document.getElementById('predictBtn').innerText = "Predecir (Modelo listo)";
+      showLossChart();
+    }
+
+    function showLossChart() {
+      const ctx = document.getElementById('lossChart').getContext('2d');
+      const labels = lossValues.map(e => e.epoch);
+      const data = lossValues.map(e => e.loss);
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Pérdida (Loss)',
+            data: data,
+            borderColor: 'blue',
+            fill: false,
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              title: { display: true, text: 'Época' }
+            },
+            y: {
+              title: { display: true, text: 'Pérdida' }
+            }
+          }
+        }
+      });
+
+      const perdidaInicial = lossValues[0].loss.toFixed(4);
+      const perdidaFinal = lossValues[lossValues.length - 1].loss.toFixed(4);
+      const reduccion = ((1 - perdidaFinal / perdidaInicial) * 100).toFixed(2);
+      document.getElementById("lossInfo").innerText = `Pérdida inicial: ${perdidaInicial}, final: ${perdidaFinal} (Reducción: ${reduccion}%)`;
+    }
+
+    function makePrediction() {
+      if (!trained) {
+        alert("Primero entrená el modelo antes de predecir.");
+        return;
+      }
+
+      const inputStr = document.getElementById("inputX").value;
+      const values = inputStr.split(',').map(n => parseFloat(n.trim())).filter(n => !isNaN(n));
+
+      if (values.length === 0) {
+        alert("Por favor, ingresa al menos un número válido.");
+        return;
+      }
+
+      const tensor = tf.tensor2d(values, [values.length, 1]);
+      const prediction = model.predict(tensor);
+
+      prediction.array().then(array => {
+        let html = "<strong>Resultados:</strong><ul>";
+        values.forEach((val, i) => {
+          html += `<li>Para x = ${val}: y = ${array[i][0].toFixed(2)}</li>`;
+        });
+        html += "</ul>";
+        document.getElementById("resultados").innerHTML = html;
+      });
+    }
+  </script>
+</body>
+</html>
